@@ -16,6 +16,7 @@ import static org.mule.metadata.api.utils.MetadataTypeUtils.getLocalPart;
 import static org.mule.metadata.java.api.utils.JavaTypeUtils.getType;
 import static org.mule.runtime.api.i18n.I18nMessageFactory.createStaticMessage;
 import static org.mule.runtime.api.util.collection.Collectors.toImmutableList;
+import static org.mule.runtime.core.api.config.MuleDeploymentProperties.MULE_LAZY_INIT_DEPLOYMENT_PROPERTY;
 import static org.mule.runtime.core.api.lifecycle.LifecycleUtils.initialiseIfNeeded;
 import static org.mule.runtime.extension.api.util.ExtensionMetadataTypeUtils.isFlattenedParameterGroup;
 import static org.mule.runtime.extension.api.util.NameUtils.getComponentModelTypeName;
@@ -31,6 +32,8 @@ import static org.mule.runtime.module.extension.internal.util.MuleExtensionUtils
 import org.mule.metadata.api.model.MetadataType;
 import org.mule.metadata.api.model.ObjectFieldType;
 import org.mule.metadata.api.model.ObjectType;
+import org.mule.runtime.api.component.ConfigurationProperties;
+import org.mule.runtime.api.exception.MuleException;
 import org.mule.runtime.api.exception.MuleRuntimeException;
 import org.mule.runtime.api.lifecycle.InitialisationException;
 import org.mule.runtime.api.meta.model.ComponentModel;
@@ -42,6 +45,7 @@ import org.mule.runtime.api.meta.model.parameter.ParameterModel;
 import org.mule.runtime.api.meta.model.parameter.ParameterizedModel;
 import org.mule.runtime.core.api.MuleContext;
 import org.mule.runtime.core.api.config.ConfigurationException;
+import org.mule.runtime.core.api.config.MuleDeploymentProperties;
 import org.mule.runtime.extension.api.declaration.type.ExtensionsTypeLoaderFactory;
 import org.mule.runtime.extension.api.declaration.type.annotation.ConfigOverrideTypeAnnotation;
 import org.mule.runtime.extension.api.declaration.type.annotation.ExclusiveOptionalsTypeAnnotation;
@@ -51,6 +55,7 @@ import org.mule.runtime.extension.api.util.ExtensionMetadataTypeUtils;
 import org.mule.runtime.module.extension.internal.loader.ParameterGroupDescriptor;
 import org.mule.runtime.module.extension.internal.loader.java.property.NullSafeModelProperty;
 import org.mule.runtime.module.extension.internal.loader.java.property.ParameterGroupModelProperty;
+import org.mule.runtime.module.extension.internal.runtime.exception.RequiredParameterNotSetException;
 import org.mule.runtime.module.extension.internal.runtime.objectbuilder.DefaultObjectBuilder;
 import org.mule.runtime.module.extension.internal.runtime.objectbuilder.ExclusiveParameterGroupObjectBuilder;
 
@@ -66,6 +71,8 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 
+import javax.inject.Inject;
+
 /**
  * Contains behavior to obtain a ResolverSet for a set of parameters values and a {@link ParameterizedModel}.
  *
@@ -73,12 +80,18 @@ import java.util.stream.Collectors;
  */
 public final class ParametersResolver implements ObjectTypeParametersResolver {
 
+  @Inject
+  private ConfigurationProperties properties;
+
+  private final Boolean lazyInitEnabled;
   private final MuleContext muleContext;
   private final Map<String, ?> parameters;
 
   private ParametersResolver(MuleContext muleContext, Map<String, ?> parameters) {
     this.muleContext = muleContext;
     this.parameters = parameters;
+    inject();
+    this.lazyInitEnabled = properties.resolveBooleanProperty(MULE_LAZY_INIT_DEPLOYMENT_PROPERTY).orElse(false);
   }
 
   public static ParametersResolver fromValues(Map<String, ?> parameters, MuleContext muleContext) {
@@ -101,7 +114,6 @@ public final class ParametersResolver implements ObjectTypeParametersResolver {
    * @return a {@link ResolverSet}
    */
   public ResolverSet getParametersAsResolverSet(ParameterizedModel model, MuleContext muleContext) throws ConfigurationException {
-
     List<ParameterGroupModel> inlineGroups = getInlineGroups(model.getParameterGroupModels());
     List<ParameterModel> flatParameters = getFlatParameters(inlineGroups, model.getAllParameterModels());
     ResolverSet resolverSet = getParametersAsResolverSet(model, flatParameters, muleContext);
@@ -214,6 +226,8 @@ public final class ParametersResolver implements ObjectTypeParametersResolver {
 
       if (resolver != null) {
         resolverSet.add(parameterName, resolver);
+      } else if (p.isRequired() && !lazyInitEnabled) {
+        throw new RequiredParameterNotSetException(p);
       }
     });
 
@@ -306,7 +320,7 @@ public final class ParametersResolver implements ObjectTypeParametersResolver {
         } catch (InitialisationException e) {
           throw new MuleRuntimeException(e);
         }
-      } else if (field.isRequired() && !isFlattenedParameterGroup(field)) {
+      } else if (field.isRequired() && !isFlattenedParameterGroup(field) && !lazyInitEnabled) {
         throw new IllegalStateException(format("The object '%s' requires the parameter '%s' but is not set",
                                                objectClass.getSimpleName(), objectField.getName()));
       }
@@ -396,5 +410,13 @@ public final class ParametersResolver implements ObjectTypeParametersResolver {
   private ValueResolver<?> getCollectionResolver(Collection<?> collection) {
     return CollectionValueResolver.of(collection.getClass(),
                                       collection.stream().map(p -> toValueResolver(p)).collect(toImmutableList()));
+  }
+
+  private void inject() {
+    try {
+      muleContext.getInjector().inject(this);
+    } catch (MuleException e) {
+      throw new IllegalStateException("Could not inject ParametersResolver instance.", e);
+    }
   }
 }

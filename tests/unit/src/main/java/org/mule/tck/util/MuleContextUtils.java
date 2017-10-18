@@ -154,8 +154,8 @@ public class MuleContextUtils {
 
   public static MuleContextWithRegistries mockMuleContext() {
     final MuleContextWithRegistries muleContext =
-        mock(MuleContextWithRegistries.class,
-             withSettings().defaultAnswer(RETURNS_DEEP_STUBS).extraInterfaces(PrivilegedMuleContext.class));
+      mock(MuleContextWithRegistries.class,
+           withSettings().defaultAnswer(RETURNS_DEEP_STUBS).extraInterfaces(PrivilegedMuleContext.class));
     when(muleContext.getUniqueIdString()).thenReturn(UUID.getUUID());
     when(muleContext.getDefaultErrorHandler(empty())).thenReturn(new OnErrorPropagateHandler());
     StreamingManager streamingManager = mock(StreamingManager.class, RETURNS_DEEP_STUBS);
@@ -178,6 +178,16 @@ public class MuleContextUtils {
    * @return the created {@code muleContext}.
    */
   public static MuleContextWithRegistries mockContextWithServices() {
+    return mockContextWithServices(new HashMap<>());
+  }
+
+  /**
+   * Creates and configures a mock {@link MuleContext} to return testing services implementations.
+   *
+   * @param objects a set of services, managers and other kind of objects to be added to the mocked registry.
+   * @return the created {@code muleContext}.
+   */
+  public static MuleContextWithRegistries mockContextWithServices(Map<Class, Object> objects) {
     final MuleContextWithRegistries muleContext = mockMuleContext();
 
     SchedulerService schedulerService = spy(new SimpleUnitTestSupportSchedulerService());
@@ -198,15 +208,17 @@ public class MuleContextUtils {
       when(registry.lookupObject(NotificationListenerRegistry.class)).thenReturn(notificationListenerRegistry);
 
       Map<Class, Object> injectableObjects = new HashMap<>();
-
-      injectableObjects.put(MuleContext.class, muleContext);
-      injectableObjects.put(SchedulerService.class, schedulerService);
-      injectableObjects.put(ErrorTypeRepository.class, errorTypeRepository);
-      injectableObjects.put(StreamingManager.class, muleContext.getRegistry().lookupObject(StreamingManager.class));
-      injectableObjects.put(ObjectStoreManager.class, muleContext.getRegistry().lookupObject(OBJECT_STORE_MANAGER));
-      injectableObjects.put(NotificationDispatcher.class, muleContext.getRegistry().lookupObject(NotificationDispatcher.class));
-      injectableObjects.put(NotificationListenerRegistry.class, notificationListenerRegistry);
+      injectableObjects.putAll(objects);
+      injectableObjects.putIfAbsent(MuleContext.class, muleContext);
+      injectableObjects.putIfAbsent(SchedulerService.class, schedulerService);
+      injectableObjects.putIfAbsent(ErrorTypeRepository.class, errorTypeRepository);
+      injectableObjects.putIfAbsent(StreamingManager.class, muleContext.getRegistry().lookupObject(StreamingManager.class));
+      injectableObjects.putIfAbsent(ObjectStoreManager.class, muleContext.getRegistry().lookupObject(OBJECT_STORE_MANAGER));
+      injectableObjects.putIfAbsent(NotificationDispatcher.class,
+                                    muleContext.getRegistry().lookupObject(NotificationDispatcher.class));
+      injectableObjects.putIfAbsent(NotificationListenerRegistry.class, notificationListenerRegistry);
       injectableObjects.put(ConfigurationComponentLocator.class, configurationComponentLocator);
+
 
       // Ensure injection of consistent mock objects
       when(muleContext.getInjector()).thenReturn(new MocksInjector(injectableObjects));
@@ -251,7 +263,7 @@ public class MuleContextUtils {
    * @throws TransformerException will be thrown if there is more than one match
    */
   public static <T> Transformer lookupTransformer(MuleContextWithRegistries context, DataType source, DataType result)
-      throws TransformerException {
+    throws TransformerException {
     return context.getRegistry().lookupTransformer(source, result);
   }
 
