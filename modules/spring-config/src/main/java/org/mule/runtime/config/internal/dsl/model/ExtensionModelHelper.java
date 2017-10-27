@@ -37,6 +37,7 @@ import org.mule.runtime.api.meta.model.source.SourceModel;
 import org.mule.runtime.api.util.Reference;
 import org.mule.runtime.config.api.dsl.model.DslElementModel;
 import org.mule.runtime.config.internal.model.ComponentModel;
+import org.mule.runtime.extension.api.property.XmlExtensionModelProperty;
 import org.mule.runtime.extension.api.stereotype.MuleStereotypes;
 
 import com.google.common.cache.Cache;
@@ -130,32 +131,20 @@ public class ExtensionModelHelper {
   public Optional<? extends org.mule.runtime.api.meta.model.ComponentModel> findComponentModel(ComponentIdentifier componentIdentifier) {
     try {
       return extensionComponentModelByComponentIdentifier.get(componentIdentifier, () -> {
-        String componentName = toCamelCase(componentIdentifier.getName(), COMPONENT_NAME_SEPARATOR);
+        Reference<String> componentName = new Reference<>(toCamelCase(componentIdentifier.getName(), COMPONENT_NAME_SEPARATOR));
         for (ExtensionModel extensionModel : extensionsModels) {
           if (extensionModel.getXmlDslModel().getPrefix().equals(componentIdentifier.getNamespace())) {
+            // Smart Connectors keep the same name from xml as operation name
+            extensionModel.getModelProperty(XmlExtensionModelProperty.class)
+                .ifPresent(modelProperty -> componentName.set(componentIdentifier.getName()));
+
             List<HasOperationModels> operationModelsProviders = ImmutableList.<HasOperationModels>builder()
                 .add(extensionModel).addAll(extensionModel.getConfigurationModels()).build();
             List<HasSourceModels> sourceModelsProviders = ImmutableList.<HasSourceModels>builder()
                 .add(extensionModel).addAll(extensionModel.getConfigurationModels()).build();
             List<HasConstructModels> constructModelsProviders = singletonList(extensionModel);
-            for (HasOperationModels operationModelsProvider : operationModelsProviders) {
-              Optional<OperationModel> operationModel = operationModelsProvider.getOperationModel(componentName);
-              if (operationModel.isPresent()) {
-                return operationModel;
-              }
-            }
-            for (HasSourceModels sourceModelsProvider : sourceModelsProviders) {
-              Optional<SourceModel> sourceModel = sourceModelsProvider.getSourceModel(componentName);
-              if (sourceModel.isPresent()) {
-                return sourceModel;
-              }
-            }
-            for (HasConstructModels constructModelsProvider : constructModelsProviders) {
-              Optional<ConstructModel> constructModel = constructModelsProvider.getConstructModel(componentName);
-              if (constructModel.isPresent()) {
-                return constructModel;
-              }
-            }
+
+            return resolveModel(operationModelsProviders, sourceModelsProviders, constructModelsProviders, componentName.get());
           }
         }
         return empty();
@@ -163,6 +152,31 @@ public class ExtensionModelHelper {
     } catch (ExecutionException e) {
       throw new MuleRuntimeException(e);
     }
+  }
+
+  private Optional<? extends org.mule.runtime.api.meta.model.ComponentModel> resolveModel(List<HasOperationModels> operationModelsProviders,
+                                                                                          List<HasSourceModels> sourceModelsProviders,
+                                                                                          List<HasConstructModels> constructModelsProviders,
+                                                                                          String componentName) {
+    for (HasOperationModels operationModelsProvider : operationModelsProviders) {
+      Optional<OperationModel> operationModel = operationModelsProvider.getOperationModel(componentName);
+      if (operationModel.isPresent()) {
+        return operationModel;
+      }
+    }
+    for (HasSourceModels sourceModelsProvider : sourceModelsProviders) {
+      Optional<SourceModel> sourceModel = sourceModelsProvider.getSourceModel(componentName);
+      if (sourceModel.isPresent()) {
+        return sourceModel;
+      }
+    }
+    for (HasConstructModels constructModelsProvider : constructModelsProviders) {
+      Optional<ConstructModel> constructModel = constructModelsProvider.getConstructModel(componentName);
+      if (constructModel.isPresent()) {
+        return constructModel;
+      }
+    }
+    return empty();
   }
 
   /**
