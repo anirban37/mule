@@ -281,4 +281,5 @@ public abstract class TemplateOnErrorHandler extends AbstractExceptionListener
   public void setRootContainerName(String rootContainerName) {
     updateRootContainerName(rootContainerName, this);
   }
+
 }
