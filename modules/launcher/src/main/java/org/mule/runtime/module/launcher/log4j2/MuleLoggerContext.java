@@ -6,6 +6,11 @@
  */
 package org.mule.runtime.module.launcher.log4j2;
 
+import static java.lang.Boolean.parseBoolean;
+import static java.util.Optional.empty;
+import static java.util.Optional.of;
+import static org.mule.runtime.core.api.config.MuleDeploymentProperties.MULE_POLICY_LOGS_TO_APP_DEPLOYMENT_PROPERTY;
+
 import org.mule.runtime.core.internal.logging.LogConfigChangeSubject;
 import org.mule.runtime.module.artifact.api.classloader.ArtifactClassLoader;
 import org.mule.runtime.module.artifact.api.classloader.RegionClassLoader;
@@ -13,6 +18,8 @@ import org.mule.runtime.module.artifact.api.descriptor.ArtifactDescriptor;
 
 import java.beans.PropertyChangeListener;
 import java.net.URI;
+import java.util.Optional;
+import java.util.Properties;
 import java.util.concurrent.TimeUnit;
 
 import org.apache.logging.log4j.core.Logger;
@@ -56,22 +63,44 @@ class MuleLoggerContext extends LoggerContext implements LogConfigChangeSubject 
   MuleLoggerContext(String name, URI configLocn, ClassLoader ownerClassLoader, ContextSelector contextSelector,
                     boolean standalone) {
     super(name, null, configLocn);
-    configFile = configLocn;
+    this.configFile = configLocn;
     this.contextSelector = contextSelector;
     this.standlone = standalone;
-    ownerClassLoaderHash =
+    this.ownerClassLoaderHash =
         ownerClassLoader != null ? ownerClassLoader.hashCode() : getClass().getClassLoader().getSystemClassLoader().hashCode();
 
-    if (ownerClassLoader instanceof ArtifactClassLoader) {
-      artifactClassloader = true;
-      artifactName = getArtifactName((ArtifactClassLoader) ownerClassLoader);
-      artifactDescriptor = getArtifactDescriptor((ArtifactClassLoader) ownerClassLoader);
-      applicationClassloader = ownerClassLoader instanceof RegionClassLoader;
+    Optional<ArtifactClassLoader> artifactClassloader = getArtifactClassLoader(ownerClassLoader);
+
+    if (artifactClassloader.isPresent()) {
+      this.artifactClassloader = true;
+      this.artifactName = getArtifactName(artifactClassloader.get());
+      this.artifactDescriptor = getArtifactDescriptor(artifactClassloader.get());
+      this.applicationClassloader = artifactClassloader.get() instanceof RegionClassLoader;
     } else {
-      artifactClassloader = false;
-      applicationClassloader = false;
-      artifactName = null;
+      this.artifactClassloader = false;
+      this.applicationClassloader = false;
+      this.artifactName = null;
     }
+  }
+
+  private Optional<ArtifactClassLoader> getArtifactClassLoader(ClassLoader ownerClassLoader) {
+    if (ownerClassLoader instanceof ArtifactClassLoader) {
+      ArtifactDescriptor artifactDescriptor = getArtifactDescriptor((ArtifactClassLoader) ownerClassLoader);
+      return artifactDescriptor.getBundleDescriptor() != null && artifactDescriptor.getBundleDescriptor().isPolicy()
+          && policyLogsToAppEnabled(artifactDescriptor)
+              ? of((ArtifactClassLoader) ownerClassLoader.getParent())
+              : of((ArtifactClassLoader) ownerClassLoader);
+    }
+
+    return empty();
+  }
+
+  private boolean policyLogsToAppEnabled(ArtifactDescriptor artifactDescriptor) {
+    if (artifactDescriptor == null || !artifactDescriptor.getDeploymentProperties().isPresent()) {
+      return false;
+    }
+    Properties properties = artifactDescriptor.getDeploymentProperties().get();
+    return parseBoolean(properties.getProperty(MULE_POLICY_LOGS_TO_APP_DEPLOYMENT_PROPERTY, "false"));
   }
 
   private ArtifactDescriptor getArtifactDescriptor(ArtifactClassLoader ownerClassLoader) {
@@ -162,4 +191,5 @@ class MuleLoggerContext extends LoggerContext implements LogConfigChangeSubject 
     this.artifactDescriptor = null;
     return result;
   }
+
 }

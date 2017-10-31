@@ -53,6 +53,10 @@ public class BundleDescriptor {
     return classifier.map(classifier -> classifier.equals("mule-plugin")).orElse(false);
   }
 
+  public boolean isPolicy() {
+    return classifier.map(classifier -> classifier.equals("mule-policy")).orElse(false);
+  }
+
   @Override
   public boolean equals(Object o) {
     if (this == o) {
@@ -132,6 +136,10 @@ public class BundleDescriptor {
 
     private BundleDescriptor bundleDependency = new BundleDescriptor();
 
+    private static boolean isEmpty(String value) {
+      return value == null || value.equals("");
+    }
+
     /**
      * @param groupId the group id of the bundle. Cannot be null or empty.
      * @return the builder
@@ -204,10 +212,6 @@ public class BundleDescriptor {
 
     private void validateIsNotEmpty(String value, String fieldId) {
       checkState(!isEmpty(value), getNullFieldMessage(fieldId));
-    }
-
-    private static boolean isEmpty(String value) {
-      return value == null || value.equals("");
     }
   }
 }
