@@ -154,8 +154,8 @@ public class MuleContextUtils {
 
   public static MuleContextWithRegistries mockMuleContext() {
     final MuleContextWithRegistries muleContext =
-      mock(MuleContextWithRegistries.class,
-           withSettings().defaultAnswer(RETURNS_DEEP_STUBS).extraInterfaces(PrivilegedMuleContext.class));
+        mock(MuleContextWithRegistries.class,
+             withSettings().defaultAnswer(RETURNS_DEEP_STUBS).extraInterfaces(PrivilegedMuleContext.class));
     when(muleContext.getUniqueIdString()).thenReturn(UUID.getUUID());
     when(muleContext.getDefaultErrorHandler(empty())).thenReturn(new OnErrorPropagateHandler());
     StreamingManager streamingManager = mock(StreamingManager.class, RETURNS_DEEP_STUBS);
@@ -263,7 +263,7 @@ public class MuleContextUtils {
    * @throws TransformerException will be thrown if there is more than one match
    */
   public static <T> Transformer lookupTransformer(MuleContextWithRegistries context, DataType source, DataType result)
-    throws TransformerException {
+      throws TransformerException {
     return context.getRegistry().lookupTransformer(source, result);
   }
 

@@ -14,7 +14,7 @@ import org.mule.test.heisenberg.extension.HeisenbergConnection;
 
 import org.junit.Test;
 
-public class HeisenbergTlsTestCase extends MuleArtifactFunctionalTestCase {
+public class HeisenbergTlsTestCase extends AbstractExtensionFunctionalTestCase {
 
   @Override
   protected String getConfigFile() {
